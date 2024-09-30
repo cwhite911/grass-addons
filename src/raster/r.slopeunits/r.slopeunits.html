@@ -2,9 +2,15 @@
 
 <em>r.slopeunits</em> ...
 
+<h2>EXAMPLE</h2>
+<div class="code"><pre>
+    g.region raster=elevation -p
+    r.slopeunits -m --overwrite demmap=elevation@PERMANENT slumap=slopeunits slumapclean=slope_units circvarmap=circular_variance areamap=areamap thresh=100000 areamin=50000 cvmin=0.15 rf=1 maxiteration=3 cleansize=1
+</pre></div>
+
 <h2>REFERENCES</h2>
-<href src="https://www.sciencedirect.com/science/article/pii/S0012825224002551?via%3Dihub#f0005">A benchmark dataset and workflow for landslide susceptibility zonation (Massimiliano Alvioli et al. 2024)</href>
-<href src="https://gmd.copernicus.org/articles/9/3975/2016/gmd-9-3975-2016-assets.html">Automatic delineation of geomorphological slope units with r.slopeunits v1.0 and their optimization for landslide susceptibility modeling (Massimiliano Alvioli et al. 2016)</href>
+<a href="https://www.sciencedirect.com/science/article/pii/S0012825224002551?via%3Dihub#f0005" target="_blank">A benchmark dataset and workflow for landslide susceptibility zonation (Massimiliano Alvioli et al. 2024)</a>
+<a href="https://gmd.copernicus.org/articles/9/3975/2016/gmd-9-3975-2016-assets.html" target="_blank">Automatic delineation of geomorphological slope units with r.slopeunits v1.0 and their optimization for landslide susceptibility modeling (Massimiliano Alvioli et al. 2016)</a>
 
 <h2>AUTHOR</h2>
 
