@@ -3,9 +3,9 @@
 ############################################################################
 #
 # MODULE:	r.slopeunits for GRASS 7
-# AUTHOR(S):    Ivan Marchesini, Massimiliano Alvioli
+# AUTHOR(S):    Ivan Marchesini, Massimiliano Alvioli, Corey T. White (Implemented in GRASS Addons)
 # PURPOSE:	To create a raster layer of slope units
-# COPYRIGHT: (C) 2004-2012 by the GRASS Development Team
+# COPYRIGHT: (C) 2004-2024 by the GRASS Development Team
 #
 # 		This program is free software under the GNU General Public
 # 		License (>=v2). Read the file COPYING that comes with GRASS
@@ -675,7 +675,7 @@ def main():
             grass.run_command(
                 "g.remove",
                 type="raster",
-                name="slu_diversity,slu_diversity_nobordi,slu_diversity_nobordi_grow,slu_finale_nobordi,slu_no_stripes",
+                name="slu_diversity,slu_diversity_nobordi,slu_diversity_nobordi_grow,slu_finale_nobordi",
                 flags="f",
                 quiet=True,
             )
@@ -696,6 +696,7 @@ def main():
                 overwrite=True,
                 quiet=True,
             )
+            # TODO: This needs to be fixed
             os.system(
                 "/home/alvioli/dem_globo_srtm/range/script04/slu_code/clean_method_3.sh slu_v_grow vect2 %s"
                 % cleansize
