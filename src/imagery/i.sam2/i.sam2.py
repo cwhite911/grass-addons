@@ -14,8 +14,9 @@
 
 # %module
 # % description: Integrates SAMGeo model for segmentation in GRASS GIS.
-# % keyword: raster
+# % keyword: imagery
 # % keyword: segmentation
+# % keyword: object recognition
 # % keyword: deep learning
 # %end
 
