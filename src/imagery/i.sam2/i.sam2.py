@@ -13,7 +13,7 @@
 #############################################################################
 
 # %module
-# % description: Integrates SAMGeo model for segmentation in GRASS GIS.
+# % description: Integrates SAMGeo model with text prompt for segmentation in GRASS GIS.
 # % keyword: imagery
 # % keyword: segmentation
 # % keyword: object recognition
