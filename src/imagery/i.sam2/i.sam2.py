@@ -102,8 +102,11 @@ def main():
     temp_output_path = tmp_dir
     guide_input_path = None
 
-    rasters = gs.read_command("i.group", group=group, flags="lg").strip().split("\n")
-    input_image_np = list([garray.array(raster, dtype=np.uint8) for raster in rasters])
+    rasters = gs.read_command("i.group", group=group, flags="lg")
+    raster_list = [raster.strip() for raster in rasters.splitlines()]
+    input_image_np = list(
+        [garray.array(raster, dtype=np.uint8) for raster in raster_list]
+    )
 
     rgb_array = np.stack(input_image_np, axis=-1)
 
