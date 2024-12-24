@@ -44,7 +44,7 @@
 # %option
 # % key: text_prompt
 # % type: string
-# % description: Optional text prompt to guide segmentation
+# % description: Text prompt to guide segmentation
 # % required: yes
 # %end
 
