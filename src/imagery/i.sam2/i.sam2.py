@@ -113,7 +113,7 @@ def read_raster_group(group):
 
 def normalize_rgb_array(rgb_array):
     """
-    Normalize an RGB array to the range [0, 255].
+    Normalizes an RGB array to the range [0, 255].
 
     This function takes an RGB array and normalizes its values to the range [0, 255].
     If the input array is not of type np.uint8, it scales the values to fit within
@@ -169,7 +169,7 @@ def run_langsam_segmentation(
 
 def run_samgeo_segmentation(temp_input_path, temp_output_path, model_path, device):
     """
-    Run SAMGeo segmentation on an input image and save the output.
+    Runs SAMGeo segmentation on an input image and saves the output.
 
     Parameters:
     temp_input_path (str): The file path to the input image.
