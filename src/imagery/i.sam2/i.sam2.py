@@ -192,13 +192,13 @@ def write_raster(input_np_array, output_raster):
     Writes a segmented raster into GRASS GIS.
 
     Parameters:
-    input_np_array (list of numpy.ndarray): A list of numpy arrays representing the input raster bands.
+    input_np_array (list of numpy.ndarray): A list of numpy arrays representing the masks of the input image.
     output_raster (str): The name of the output raster map to be created in GRASS GIS.
 
     Raises:
     ValueError: If the input array is empty or if the masks do not have the same shape.
 
-    This function merges multiple raster bands into a single raster, where each band is assigned a unique value.
+    This function merges multiple raster masks into a single raster, where each mask is assigned a unique value.
     The merged raster is then written to a GRASS GIS raster map.
     """
 
