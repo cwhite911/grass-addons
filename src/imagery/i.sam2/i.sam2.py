@@ -26,11 +26,9 @@
 # % required: yes
 # %end
 
-# %option
+# %option G_OPT_R_OUTPUT
 # % key: output
-# % type: string
 # % description: Name of output segmented raster map
-# % gisprompt: new,cell,raster
 # % required: yes
 # %end
 
@@ -187,13 +185,13 @@ def run_samgeo_segmentation(temp_input_path, temp_output_path, model_path, devic
     sam.generate(input_image=temp_input_path, output=temp_output_path)
 
 
-def write_raster(input_np_array, output_raster):
+def write_raster(input_np_array, output_raster_masks):
     """
     Writes a segmented raster into GRASS GIS.
 
     Parameters:
     input_np_array (list of numpy.ndarray): A list of numpy arrays representing the masks of the input image.
-    output_raster (str): The name of the output raster map to be created in GRASS GIS.
+    output_raster_masks (str): The name of the output raster map to be created in GRASS GIS.
 
     Raises:
     ValueError: If the input array is empty or if the masks do not have the same shape.
@@ -217,12 +215,12 @@ def write_raster(input_np_array, output_raster):
 
     mask_raster = garray.array()
     mask_raster[...] = merged_raster
-    mask_raster.write(mapname=output_raster)
+    mask_raster.write(mapname=output_raster_masks)
 
 
 def main():
     group = options["group"]
-    output_raster = options["output"]
+    output_raster_masks = options["output"]
     model_path = options.get("model_path") or os.path.join(
         gs.gisenv()["GISDBASE"], DEFAULT_MODEL_PATH
     )
@@ -254,7 +252,7 @@ def main():
         return 1
 
     gs.message(_("Segmentation complete."))
-    write_raster(masks, output_raster)
+    write_raster(masks, output_raster_masks)
     return 0
 
 
