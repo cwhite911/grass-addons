@@ -3,6 +3,11 @@
 The purpose of  *i.overlap* is to compute ...
 Parameter **input** is a ...
 
+## Requirements
+
+- This module requires the `PIL` (Pillow) library for image processing.
+- It also requires the `pyproj` library for geospatial calculations.
+
 ## NOTES
 
 This is a recommended section to explain the algorithm and parameter
