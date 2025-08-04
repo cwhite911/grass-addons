@@ -197,6 +197,8 @@ def parse_exif(img):
 
 def get_exif(image_path):
     """Return EXIF data as dict."""
+
+    # TODO: Use exiftools (https://exiftool.org/TagNames/EXIF.html)
     img = Image.open(image_path)
     exif_data = {}
     info = img._getexif()
@@ -310,7 +312,7 @@ def estimate_body_pitch(prev, curr):
     dy = curr["lat"] - prev["lat"]
     # convert to meters if projected CRS
     horiz = math.sqrt(dx**2 + dy**2)
-    dz = curr["alt"] - prev["alt"]
+    dz = float(curr["alt"]) - float(prev["alt"])
     return math.degrees(math.atan2(dz, horiz))
 
 
@@ -340,6 +342,22 @@ def bearing(lon1, lat1, lon2, lat2):
     brng_deg = (math.degrees(brng) + 360) % 360
 
     return brng_deg
+
+
+def heading(prev_img, current_img):
+    """
+    Determining the angle between the current position and the previous position.
+    """
+    return bearing(
+        prev_img["lon"], prev_img["lat"], current_img["lon"], current_img["lat"]
+    )
+
+
+def circular_mean(angles):
+    """Mean of angles in degrees, safe across 0/360 wrap."""
+    sin_sum = sum(math.sin(math.radians(a)) for a in angles)
+    cos_sum = sum(math.cos(math.radians(a)) for a in angles)
+    return (math.degrees(math.atan2(sin_sum, cos_sum)) + 360) % 360
 
 
 def cluster_flight_lines_old(images, threshold=50.0):
@@ -455,45 +473,107 @@ def assign_line_headings(images, threshold=50.0):
     return images
 
 
+def detect_camera_orientation(exif):
+    """
+    Decide if the camera footprint is 'long-forward' or 'short-forward'
+    based on EXIF width/height and orientation.
+    """
+    w = exif.get("ExifImageWidth")
+    h = exif.get("ExifImageHeight")
+    orientation = exif.get("Orientation", 1)
+    print(f"Orientation: {orientation}")
+    # Default assumption
+    orient = "short-forward"
+
+    if w and h:
+        if w > h:
+            # Image stored landscape
+            if orientation in (1, 3):  # normal or upside-down
+                orient = "long-forward"
+            elif orientation in (6, 8):  # rotated
+                orient = "short-forward"
+        elif h > w:
+            # Image stored portrait
+            if orientation in (1, 3):
+                orient = "short-forward"
+            elif orientation in (6, 8):
+                orient = "long-forward"
+
+    return orient
+
+
 # @timing
 def compute_headings_from_gps(images, dist_thresh=0.2, time_thresh=0.5):
     """
     Compute yaw for each image if EXIF yaw is missing.
-    Skips near-duplicate images when calculating GPS-based heading.
+    Uses GPS positions and timestamps to estimate heading, skipping near-duplicates.
 
-    images: list of dicts with keys:
-        lon, lat, timestamp (datetime), yaw (optional EXIF)
+    Args:
+        images: list of dicts with keys:
+            lon, lat, timestamp (datetime), yaw (optional EXIF)
+        dist_thresh: minimum distance (meters) to consider images distinct
+        time_thresh: minimum time difference (seconds) to consider images distinct
+
+    Returns:
+        images: list with "yaw" field populated where missing
     """
-    images.sort(key=lambda x: x["timestamp"])
+    images = sorted(images, key=lambda x: x["timestamp"])
 
+    n = len(images)
     for i, img in enumerate(images):
         if img.get("yaw") is not None:
             continue  # keep EXIF yaw
 
-        prev_img = images[i - 1] if i > 0 else None
-        next_img = images[i + 1] if i < len(images) - 1 else None
+        # Find previous non-duplicate image
+        prev_img = None
+        for j in range(i - 1, -1, -1):
+            if not is_duplicate(images[j], img, dist_thresh, time_thresh):
+                prev_img = images[j]
+                break
 
-        # Skip duplicates for heading
-        if next_img and is_duplicate(img, next_img, dist_thresh, time_thresh):
-            # fall back to previous if possible
-            if prev_img and not is_duplicate(img, prev_img, dist_thresh, time_thresh):
-                img["yaw"] = bearing(
-                    prev_img["lon"], prev_img["lat"], img["lon"], img["lat"]
-                )
-            else:
-                img["yaw"] = 0.0  # fallback
-            continue
+        # Find next non-duplicate image
+        next_img = None
+        for j in range(i + 1, n):
+            if not is_duplicate(img, images[j], dist_thresh, time_thresh):
+                next_img = images[j]
+                break
 
-        if prev_img and not is_duplicate(img, prev_img, dist_thresh, time_thresh):
-            img["yaw"] = bearing(
-                prev_img["lon"], prev_img["lat"], img["lon"], img["lat"]
-            )
+        # If previous image is duplicate
+        prev_img_is_dup = (
+            images[i - 1]
+            if i > 0 and is_duplicate(images[i - 1], img, dist_thresh, time_thresh)
+            else None
+        )
+
+        # If next image is duplicate
+        next_img_is_dup = (
+            images[i + 1]
+            if i + 1 < n and is_duplicate(images[i + 1], img, dist_thresh, time_thresh)
+            else None
+        )
+
+        if prev_img and next_img:
+            # Average heading from previous and next
+            h1 = heading(prev_img, img)
+            h2 = heading(img, next_img)
+            # Ensure the average is in the direction of h1
+            avg_yaw = circular_mean([h1, h2])
+            img["yaw"] = avg_yaw
+        elif prev_img:
+            img["yaw"] = heading(prev_img, img)
         elif next_img:
-            img["yaw"] = bearing(
-                img["lon"], img["lat"], next_img["lon"], next_img["lat"]
-            )
+            img["yaw"] = heading(img, next_img)
         else:
-            img["yaw"] = 0.0  # single image case
+            img["yaw"] = 0.0  # fallback if no neighbors
+
+        # If plane is taking two photos in a row with adjusting roll to achieve NADIR camera orientation
+        if prev_img_is_dup:
+            img["roll"] = -45.0
+
+        if next_img_is_dup:
+            img["roll"] = 45.0
+        # Rotate frame 90, so 0 is North
+        # img["yaw"] = (img["yaw"] + 90) % 360
 
     return images
 
@@ -536,30 +616,29 @@ def compute_sensor_size(exif):
     The same formula applies for sensor height.
     """
     # image dimensions
-    img_w = exif.get("ExifImageWidth")
-    img_h = exif.get("ExifImageHeight")
+    img_w = exif.get("ExifImageWidth")  # px
+    img_h = exif.get("ExifImageHeight")  # px
+    fp_x = exif.get("FocalPlaneXResolution")  # pixels per unit (DPI)
+    fp_y = exif.get("FocalPlaneYResolution")  # pixels per unit (DPI)
     if not img_w or not img_h:
         gs.warning(_("Image dimensions not found in EXIF data"))
         return 0.1
 
     # resolution units: 2=inches, 3=cm, else assume inches
     unit = exif.get("FocalPlaneResolutionUnit", 2)
+
     if unit == 2:
-        conv = 25.4  # mm per inch
+        conv = 25.4  # mm/inch
     elif unit == 3:
-        conv = 10.0  # mm per cm
+        conv = 10.0  # mm/cm
     else:
         conv = 25.4
 
     gs.debug(_("Resolution unit conversion factor: %s") % conv)
-    # try to compute sensor size from FocalPlaneResolution
-    if "FocalPlaneXResolution" in exif and "FocalPlaneYResolution" in exif:
-        sensor_w_mm = (img_w / exif["FocalPlaneXResolution"]) * conv
-        sensor_h_mm = (img_h / exif["FocalPlaneYResolution"]) * conv
-    else:
-        # fallback: common compact sensor (DJI, ~6.3mm or 13.2mm width)
-        sensor_w_mm = 13.2
-        sensor_h_mm = 8.8  # common height for compact sensors
+
+    sensor_w_mm = (img_w / fp_x) * conv
+    sensor_h_mm = (img_h / fp_y) * conv
+
     gs.debug(_("Sensor size: %smm x %smm") % (sensor_w_mm, sensor_h_mm))
     return (sensor_w_mm, sensor_h_mm)
 
@@ -583,19 +662,21 @@ def compute_gsd(exif, alt, focal_mm, sensor_size):
     return (gsd_w, gsd_h, gsd_avg)
 
 
-@timing
-def calc_fov(focal_mm, sensor_w_mm, sensor_h_mm):
-    """Return HFOV, VFOV in degrees."""
+def calc_angular_fov(focal_mm: float, sensor_w_mm: float, sensor_h_mm: float) -> tuple:
+    """
+    Return angular field of view (aFOV) aHFOV, aVFOV in degrees.
+    """
     hfov = 2 * math.degrees(math.atan(sensor_w_mm / (2 * focal_mm)))
     vfov = 2 * math.degrees(math.atan(sensor_h_mm / (2 * focal_mm)))
+    gs.debug(_("Angular FOV: HFOV=%s, VFOV=%s") % (hfov, vfov))
     return hfov, vfov
 
 
-@timing
-def calc_footprint_from_fov(alt, hfov, vfov):
-    """Return ground footprint width, height in meters (nadir, flat ground)."""
+def calc_footprint_from_fov(alt: float, hfov: float, vfov: float) -> tuple:
+    """Return ground footprint (gound field of view) width, height in meters (nadir, flat ground)."""
     width = 2 * alt * math.tan(math.radians(hfov / 2))
     height = 2 * alt * math.tan(math.radians(vfov / 2))
+    gs.debug(_("Footprint dimensions (GFOV): width=%s, height=%s") % (width, height))
     return width, height
 
 
@@ -692,15 +773,15 @@ def calculate_overlaps(footprints_map, output_prefix):
 
 def get_orientation(exif):
     """Extract yaw, pitch, roll; return defaults if not found."""
-    # Do not set a default here, use EXIF value
+    # Do not set a Yaw default here, use EXIF value
     # if Yaw is not found it is calculated later
-    # from GPS data or set to 0.0
+    # from GPS data.
+    # Some cameras use MakerNotes instead of EXIF
     yaw = exif.get("FlightYawDegree")
     pitch = exif.get("GimbalPitchDegree", -90.0)  # Default: nadir
     roll = exif.get("GimbalRollDegree", 0.0)
     gs.debug(_("Orientation: yaw=%s, pitch=%s, roll=%s") % (yaw, pitch, roll))
-    # Some cameras use MakerNotes instead of EXIF
-    # Ensure defaults are applied if None
+
     return yaw, pitch, roll
 
 
@@ -753,6 +834,10 @@ def get_footprint_dimensions(gsd_x, gsd_y, exif):
         return 0.1, 0.1
     footprint_w = gsd_x * img_w
     footprint_h = gsd_y * img_h
+    gs.debug(
+        _("Footprint dimensions from GSD: width=%s m, height=%s m")
+        % (footprint_w, footprint_h)
+    )
     return footprint_w, footprint_h
 
 
@@ -763,9 +848,7 @@ def intersect_ray_dem_fast(
     dir_vec = dir_vec / np.linalg.norm(dir_vec)
     if step is None:
         step = min(region["ewres"], region["nsres"])  # step at DEM resolution
-    print(
-        f"Intersecting ray from ({x0}, {y0}, {z0}) at {step} m steps in direction {dir_vec}"
-    )
+
     dist = 0.0
     while dist < max_dist:
         gx = x0 + dir_vec[0] * dist
@@ -787,35 +870,35 @@ def intersect_ray_dem_fast(
     return None
 
 
-def rotation_matrix(yaw_deg, pitch_deg, roll_deg):
-    """
-    Yaw, Pitch, Roll rotation (aerospace convention).
-    yaw   = rotation about +Z (0=N, 90=E)
-    pitch = rotation about +X (nose up/down)
-    roll  = rotation about +Y (wing tilt)
-    """
+def rotation_matrix_aircraft(yaw_deg, pitch_deg, roll_deg):
     yaw, pitch, roll = np.radians([yaw_deg, pitch_deg, roll_deg])
 
-    # Yaw about world Z
     Rz = np.array(
         [[np.cos(yaw), -np.sin(yaw), 0], [np.sin(yaw), np.cos(yaw), 0], [0, 0, 1]]
     )
 
-    # Pitch about camera X (tilt forward/back)
-    Rx = np.array(
+    Ry = np.array(
         [
-            [1, 0, 0],
-            [0, np.cos(pitch), -np.sin(pitch)],
-            [0, np.sin(pitch), np.cos(pitch)],
+            [np.cos(pitch), 0, np.sin(pitch)],
+            [0, 1, 0],
+            [-np.sin(pitch), 0, np.cos(pitch)],
         ]
     )
 
-    # Roll (about Y)
-    Ry = np.array(
-        [[np.cos(roll), 0, np.sin(roll)], [0, 1, 0], [-np.sin(roll), 0, np.cos(roll)]]
+    Rx = np.array(
+        [[1, 0, 0], [0, np.cos(roll), -np.sin(roll)], [0, np.sin(roll), np.cos(roll)]]
     )
 
-    return Rz @ Rx @ Ry
+    return Rz @ Ry @ Rx  # aircraft convention
+
+
+def ypr_to_opk(yaw, pitch, roll):
+    """Convert yaw/pitch/roll to omega, phi, kappa (degrees)."""
+    R = rotation_matrix_aircraft(yaw, pitch, roll)
+    phi = math.asin(-R[2, 0])
+    omega = math.atan2(R[2, 1], R[2, 2])
+    kappa = math.atan2(R[1, 0], R[0, 0])
+    return map(math.degrees, (omega, phi, kappa))
 
 
 def make_footprint(image_metadata, dem_arr, region):
@@ -832,10 +915,8 @@ def make_footprint(image_metadata, dem_arr, region):
     sensor_w = image_metadata["sensor_size_w"]
     sensor_h = image_metadata["sensor_size_h"]
 
-    # approximate offsets in degrees (small area assumption)
-    # ground field of view (footprint) in meters
-    # gfov_w = (sensor_w * alt) / focal_length
-    # gfov_h = (sensor_h * alt) / focal_length
+    x0, y0 = e, n
+    z0 = alt  # camera height above reference plane
 
     corners = [
         (-sensor_w / 2, -sensor_h / 2),
@@ -844,31 +925,21 @@ def make_footprint(image_metadata, dem_arr, region):
         (-sensor_w / 2, sensor_h / 2),
     ]
 
-    def flip_w_h_corners(corners):
-        """Flip corners to match image orientation."""
-        return [(y, -x) for x, y in corners]
-
-    corners = flip_w_h_corners(corners)
     print(f"Corners before rotation: {corners}")
 
     # rotation
     print(f"Yaw: {yaw}, Pitch: {pitch}, Roll: {roll}")
-    R = rotation_matrix(yaw, pitch, roll)
+    R = rotation_matrix_aircraft(yaw, pitch, roll)
     print(f"Rotation matrix: {R}")
-    x0, y0 = e, n
-    z0 = agl  # camera height above reference plane
-    print(f"Camera reference plane position: ({x0}, {y0}, {z0})")
-    test_R = rotation_matrix(0, -90, 0)
-    test_dir_vec = test_R @ np.array([0, 0, -1])  # forward ray
-    print(f"Test Expected [0,0,-1], got {test_dir_vec}")
+
+    # test_R = ypr_to_opk(0, -90, 0)
+    # test_dir_vec = test_R @ np.array([0, 0, 1])  # forward ray
+    # print(f"Test Expected [0,0,-1], got {test_dir_vec}")
     footprint = []
     for cx, cy in corners:
-        # direction vector
-        # dir_vec = R @ np.array([cx, cy, focal_length])
+        # direction vector, Ray in camera coords (normalized by f)
         dir_vec = np.array([cx / focal_length, cy / focal_length, 1.0])
         dir_vec = R @ dir_vec
-
-        # hit = intersect_ray_dem(x0, y0, z0, dir_vec, dem)
         hit = intersect_ray_dem_fast(
             x0, y0, z0, dir_vec, dem_arr, region, step=1.0, max_dist=2000.0
         )
@@ -879,8 +950,9 @@ def make_footprint(image_metadata, dem_arr, region):
         print("No DEM intersections found, footprint empty")
         gs.warning("No DEM intersections found, footprint empty")
         return []
-    print(f"Footprint corners after DEM intersection: {footprint}")
+
     footprint.append(footprint[0])  # close polygon
+    print(f"Footprint corners after DEM intersection: {footprint}")
     return footprint
 
 
@@ -897,13 +969,14 @@ def make_footprint_basic(
     img_w,h      : image size (pixels)
     yaw_deg      : heading (degrees, 0=N, clockwise)
     """
-    # Ground footprint size (m)
-    fp_w = (agl * sensor_w) / focal_length
-    fp_h = (agl * sensor_h) / focal_length
+
+    # Ground field of view (footprint) in meters
+    gfov_w = (sensor_w * agl) / focal_length
+    gfov_h = (sensor_h * agl) / focal_length
 
     # Half dimensions
-    dx = fp_w / 2
-    dy = fp_h / 2
+    dx = gfov_w / 2
+    dy = gfov_h / 2
 
     # Rectangle corners centered at (0,0)
     corners = np.array(
@@ -916,15 +989,17 @@ def make_footprint_basic(
     )
 
     # Rotate by yaw (around origin)
-    yaw = math.radians(yaw_deg)
+    theta = math.radians(yaw_deg)
     R = np.array(
-        [[math.sin(yaw), math.cos(yaw)], [-math.cos(yaw), math.sin(yaw)]]
-    )  # align 0=N
+        [[math.cos(theta), -math.sin(theta)], [math.sin(theta), math.cos(theta)]]
+    )
 
     rotated = corners @ R.T
 
     # Translate to camera center
-    footprint = [(e + x, n + y, ground_elev) for x, y in rotated]
+    footprint = [
+        (round(e + x, 3), round(n + y, 3), round(ground_elev, 3)) for x, y in rotated
+    ]
     footprint.append(footprint[0])  # close polygon
     return footprint
 
@@ -1040,8 +1115,7 @@ def create_vector_feature(image_metadata):
     line = Line(points=[Point(x, y, z) for x, y, z in footprint])
     boundary = Boundary(points=[Point(x, y, z) for x, y, z in footprint])
     centroid = Centroid(x=e, y=n, z=alt)  # centroid at camera position
-    # boundary = Area(boundary)
-    print(f"Creating feature with category {cat} and attributes {attrs}")
+
     return point, line, boundary, centroid, cat, attrs
 
 
@@ -1212,7 +1286,7 @@ def main():
         if not gps:
             continue
         lon, lat, alt = gps
-        print(f"Lat: {lon}, Lon: {lat}, Alt: {alt} m")
+        print(f"Lat: {lon}, Lon: {lat}, Alt (ASL): {alt} m")
 
         ts = parse_exif_datetime(exif)
         # print(f"Timestamp: {ts}")
@@ -1227,24 +1301,32 @@ def main():
         sensor_size = compute_sensor_size(exif)
         print(f"Sensor size: {sensor_size[0]}mm x {sensor_size[1]}mm")
 
-        gsd_w, gsd_h, gsd_avg = compute_gsd(exif, alt, focal_length_mm, sensor_size)
+        agl = get_above_ground_level_alt(e, n, alt, elevation)
+        gsd_w, gsd_h, gsd_avg = compute_gsd(exif, agl, focal_length_mm, sensor_size)
         print(
             f"GSD (width): {gsd_w:.2f} m/px, GSD (height): {gsd_h:.2f} m/px, GSD (average): {gsd_avg:.2f} m/px"
         )
-
-        agl = get_above_ground_level_alt(e, n, alt, elevation)
         ground_elev = alt - agl  # ground elevation in meters
         print(f"Altitude: {alt} m")
         print(f"Above Ground Level Altitude: {agl} m")
         print(f"Ground Elevation: {ground_elev} m")
 
+        camera_orientation = detect_camera_orientation(exif)
+        print(f"Camera orientation: {camera_orientation}")
+
         yaw, pitch, roll = get_orientation(exif)
         print(f"Orientation: yaw={yaw}, pitch={pitch}, roll={roll}")
 
-        print("Calculating footprint...")
+        ahfov, avfov = calc_angular_fov(focal_length_mm, sensor_size[0], sensor_size[1])
+        print(f"Angular FOV: HFOV={ahfov:.2f}°, VFOV={avfov:.2f}°")
+
+        fov_footprint_w, fov_footprint_h = calc_footprint_from_fov(agl, ahfov, avfov)
+        print(
+            f"FOV footprint dimensions: width={fov_footprint_w:.2f} m, height={fov_footprint_h:.2f} m"
+        )
 
         footprint_w, footprint_h = get_footprint_dimensions(gsd_w, gsd_h, exif)
-        print(f"Footprint dimensions: {footprint_w:.2f}m x {footprint_h:.2f}m")
+        print(f"GSD footprint dimensions: {footprint_w:.2f}m x {footprint_h:.2f}m")
 
         image_metadata = {
             "iso": iso,
@@ -1303,7 +1385,6 @@ def main():
             img["yaw"],
         )
         img["footprint"] = footprint
-        print("Footprint created")
         if not footprint:
             gs.warning(f"No footprint created for {img}, skipping...")
 
