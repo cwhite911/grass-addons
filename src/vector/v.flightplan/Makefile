@@ -1,6 +1,6 @@
 MODULE_TOPDIR = ../..
 
-PGM=i.overlap
+PGM=v.flightplan
 
 include $(MODULE_TOPDIR)/include/Make/Script.make
 

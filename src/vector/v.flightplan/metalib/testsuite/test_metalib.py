@@ -11,7 +11,7 @@ import base64
 import tempfile
 from pathlib import Path
 
-path = get_lib_path(modname="i.overlap", libname="metalib")
+path = get_lib_path(modname="v.flightplan", libname="metalib")
 if path is None:
     gs.fatal("Not able to find the metalib library directory.")
 sys.path.append(path)

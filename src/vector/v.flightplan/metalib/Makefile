@@ -5,7 +5,7 @@ include $(MODULE_TOPDIR)/include/Make/Python.make
 
 MODULES =  __init__ metalib
 
-ETCDIR = $(ETC)/i.overlap
+ETCDIR = $(ETC)/v.flightplan
 
 PYFILES := $(patsubst %,$(ETCDIR)/%.py,$(MODULES))
 PYCFILES := $(patsubst %,$(ETCDIR)/%.pyc,$(MODULES))

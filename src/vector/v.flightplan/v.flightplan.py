@@ -63,7 +63,7 @@ import glob
 import math
 import csv
 from datetime import datetime, timedelta
-
+from gettext import gettext as _
 import numpy as np
 from collections import defaultdict
 from PIL import Image
@@ -638,8 +638,10 @@ def compute_sensor_size(exif):
     # image dimensions
     img_w = exif.get("ExifImageWidth")  # px
     img_h = exif.get("ExifImageHeight")  # px
-    fp_x = exif.get("FocalPlaneXResolution")  # pixels per unit (DPI)
-    fp_y = exif.get("FocalPlaneYResolution")  # pixels per unit (DPI)
+    # 0.252 x 0.189 is the sensor size of the 1/2" CMOS sensor on the DJI Mavric Air 2 in inches
+    # or 6.4mm x 4.8mm
+    fp_x = exif.get("FocalPlaneXResolution", 0.252)  # pixels per unit (DPI)
+    fp_y = exif.get("FocalPlaneYResolution", 0.189)  # pixels per unit (DPI)
     if not img_w or not img_h:
         gs.warning(_("Image dimensions not found in EXIF data"))
         return 0.1
@@ -656,8 +658,8 @@ def compute_sensor_size(exif):
 
     gs.debug(_("Resolution unit conversion factor: %s") % conv)
 
-    sensor_w_mm = (img_w / fp_x) * conv
-    sensor_h_mm = (img_h / fp_y) * conv
+    sensor_w_mm = 6.4  # (img_w / fp_x) * conv
+    sensor_h_mm = 4.8  # (img_h / fp_y) * conv
 
     gs.debug(_("Sensor size: %smm x %smm") % (sensor_w_mm, sensor_h_mm))
     return (sensor_w_mm, sensor_h_mm)
@@ -1036,7 +1038,7 @@ def get_camera_details(exif):
 def get_photo_specs(exif):
     """Extract photo specifications from EXIF data."""
     iso = exif.get("ISOSpeedRatings")  # Default ISO
-    shutter_speed = to_float_if_possible(exif.get("ShutterSpeedValue"))
+    shutter_speed = to_float_if_possible(exif.get("ShutterSpeedValue", 0.0))
     aperture = to_float_if_possible(exif.get("FNumber"))
     image_width = exif.get("ExifImageWidth")
     image_height = exif.get("ExifImageHeight")
@@ -1198,9 +1200,10 @@ def write_vector(metadata, outmap):
             feature = img["feature"]
             # Add area
             point, line, boundary, centroid, cat, attrs = feature
+            gs.warning(f"Writing feature {attrs}")
             validate_vector_metadata(attrs, COLS_TYPES)
             vect.write(centroid)
-            vect.write(geo_obj=boundary, cat=cat, attrs=attrs)
+            vect.write(geo_obj=point, cat=cat, attrs=attrs)
         vect.table.conn.commit()
         vect.build()
 
@@ -1272,23 +1275,23 @@ def main():
     footprint_vector = options["footprint_vector"]
     overlap = flags["c"]
 
-    photos = sorted(glob.glob(os.path.join(indir, "*.jpg")))
-    gs.message(_("Found %d photos in %s") % (len(photos), indir))
+    photos = sorted(glob.glob(os.path.join(indir, "*.[jJ][pP][gG]")))
+    gs.debug(_("Found %d photos in %s") % (len(photos), indir))
     print(f"Found {len(photos)} photos in {indir}")
 
     coords, footprints, rows = [], [], []
     metadata = []
 
-    gs.message(_("Creating transformer for reprojection..."))
+    gs.verbose(_("Creating transformer for reprojection..."))
     transformer = create_transformer()
 
     region = gs.region()
     dem_arr = garray.array(elevation)
 
-    gs.message(_("Gathering photo metadata and calculating GSD..."))
+    gs.verbose(_("Gathering photo metadata and calculating GSD..."))
     for i, img in enumerate(photos):
         exif = get_exif(img)
-
+        print(exif)
         print(f"Processing {img}...")
 
         (
