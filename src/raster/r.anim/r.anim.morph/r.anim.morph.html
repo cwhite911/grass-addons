@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>r.anim.morph - GRASS Manual</title>
+</head>
+<body>
+
+<h2>NAME</h2>
+<em><b>r.anim.morph</b></em> - Creates animated transitions between before-and-after raster maps using Baia animation plans.
+
+<h2>KEYWORDS</h2>
+raster, animation, temporal, imagery, change detection, before-and-after, satellite
+
+<h2>SYNOPSIS</h2>
+<b>r.anim.morph</b><br>
+<b>r.anim.morph --help</b><br>
+<b>r.anim.morph</b> <b>before</b>=<em>name</em> <b>after</b>=<em>name</em> <b>output</b>=<em>name</em>
+[<b>frames</b>=<em>integer</em>]
+[<b>primitive</b>=<em>string</em>]
+[<b>mask_before</b>=<em>name</em>]
+[<b>mask_after</b>=<em>name</em>]
+[<b>dem</b>=<em>name</em>]
+[<b>direction</b>=<em>string</em>]
+[<b>roi_start</b>=<em>float</em>]
+[<b>roi_end</b>=<em>float</em>]
+[<b>bg_start</b>=<em>float</em>]
+[<b>bg_end</b>=<em>float</em>]
+[<b>blend_duration</b>=<em>float</em>]
+[<b>stages</b>=<em>path</em>]
+[<b>output_plan</b>=<em>name</em>]
+[<b>-i</b>] [<b>-c</b>] [<b>-p</b>]
+
+<h2>DESCRIPTION</h2>
+
+<p><em>r.anim.morph</em> implements the <b>Baia animation plan framework</b>
+(<a href="https://doi.org/10.1109/TVCG.2018.2796557">Lobo, Appert &amp; Pietriga 2018</a>)
+for GRASS. Given a <em>before</em> and <em>after</em> raster (or multi-band
+imagery group defined as a comma-separated list), it computes a pixel-level
+<b>animation plan</b>: two rasters S and E that specify, for each pixel, when
+its transition from before to after begins and ends, and outputs a numbered
+sequence of raster frames representing the animated transition.</p>
+
+<p>The key insight of the Baia model is that meaningful before-and-after
+animations require <b>different pixels to transition at different times</b>.
+For example, when illustrating a shrinking lake, pixels close to the
+final shoreline should disappear last, while pixels far from the final
+shoreline should disappear first, giving the visual impression of the
+lake actually shrinking rather than simply fading.</p>
+
+<h3>Animation Plan Model</h3>
+
+<p>For each pixel (i,j) and animation time t ∈ [0,1]:</p>
+<pre>
+  α(i,j,t) = clamp( (t − S[i,j]) / (E[i,j] − S[i,j]) , 0, 1 )
+  frame(i,j,t) = (1 − α) · before(i,j) + α · after(i,j)
+</pre>
+<ul>
+  <li>S[i,j] = 0: pixel starts blending immediately</li>
+  <li>E[i,j] = 1: pixel finishes blending at the very end</li>
+  <li>S[i,j] = E[i,j]: instantaneous swap at that moment</li>
+</ul>
+
+<h3>Animation Primitives</h3>
+
+<dl>
+<dt><b>blend</b></dt>
+<dd>Monolithic blend: all pixels transition uniformly from start to end.
+Equivalent to classic cross-dissolve. Requires no masks.</dd>
+
+<dt><b>appearance</b></dt>
+<dd>An entity appears in the after image that was not present before.
+Pixels inside <em>mask_after</em> fade in progressively from edge to center.
+Requires <em>mask_after</em>.</dd>
+
+<dt><b>disappearance</b></dt>
+<dd>An entity present in the before image vanishes.
+Pixels inside <em>mask_before</em> fade out progressively from edge inward.
+Requires <em>mask_before</em>.</dd>
+
+<dt><b>contraction</b></dt>
+<dd>A shape shrinks from <em>mask_before</em> to <em>mask_after</em> (e.g. a drying lake).
+Pixels farthest from the new contour transition first; pixels closest to the
+new contour transition last, giving the impression of the shape gradually
+pulling inward. Requires <em>mask_before</em>; <em>mask_after</em> optional (if absent,
+shape contracts to nothing).</dd>
+
+<dt><b>expansion</b></dt>
+<dd>A shape grows from <em>mask_before</em> to <em>mask_after</em> (e.g. flooding).
+Pixels closest to the old contour appear first; pixels farthest appear last.
+Requires <em>mask_after</em>; <em>mask_before</em> optional.</dd>
+
+<dt><b>deformation</b></dt>
+<dd>Shape changes form: combines contraction of pixels leaving and expansion
+of pixels entering. Both <em>mask_before</em> and <em>mask_after</em> are required.</dd>
+
+<dt><b>radial</b></dt>
+<dd>Animation radiates outward from a center point. Pixels closest to the center
+transition first. Center defaults to image center but can be set with
+<em>radial_x</em> / <em>radial_y</em> (map coordinates). Use <em>-i</em> flag to invert
+(animate from outside in). An optional mask restricts the effect.</dd>
+
+<dt><b>directional</b></dt>
+<dd>Linear progression along a compass bearing (N/S/E/W/NE/NW/SE/SW).
+Pixels at the leading edge transition first. Use <em>-i</em> to reverse direction.</dd>
+
+<dt><b>dem</b></dt>
+<dd>Transition timing derived from a Digital Elevation Model.
+By default, high-elevation pixels transition first (e.g. snow accumulating
+from mountain peaks downward). Use <em>-i</em> to reverse (low elevations first,
+e.g. flooding). Requires <em>dem</em> raster.</dd>
+
+<dt><b>plan</b></dt>
+<dd>Use a pre-computed animation plan. Supply the name of the S raster via
+<em>plan</em>; a companion raster named <em>&lt;plan&gt;_E</em> must also exist in the
+mapset. This allows animation plans derived from external data (simulations,
+expert masks, etc.) to drive the transition.</dd>
+</dl>
+
+<h3>Staging</h3>
+
+<p>Staging allows the Region of Interest (ROI) and the background to animate
+at different times, preventing distracting background changes from competing
+with the focal change. Use <em>roi_start</em>/<em>roi_end</em> and
+<em>bg_start</em>/<em>bg_end</em> to set independent timing windows.</p>
+
+<p>Example: animate ROI first, then background:</p>
+<pre>
+  roi_start=0.0  roi_end=0.5
+  bg_start=0.5   bg_end=1.0
+</pre>
+<p>Example: animate ROI and background concurrently (default):</p>
+<pre>
+  roi_start=0.0  roi_end=1.0
+  bg_start=0.0   bg_end=1.0
+</pre>
+
+<h3>Multi-stage Animations (JSON)</h3>
+
+<p>For complex animations involving multiple sequential or parallel stages,
+supply a JSON file via <em>stages</em>. Each entry in the JSON array defines
+one stage with its own primitive, masks, and timing windows. The stages
+are composed by taking the element-wise minimum of start times and maximum
+of end times across all stages, allowing both sequential and overlapping
+transitions.</p>
+
+<p>Example JSON (Aral Sea shrinkage, two stages: ROI contracts, then BG fades):</p>
+<pre>
+[
+  {
+    "primitive": "contraction",
+    "mask_before": "aral_sea_2000",
+    "mask_after":  "aral_sea_2010",
+    "roi_start": 0.0,
+    "roi_end":   0.7,
+    "bg_start":  0.0,
+    "bg_end":    0.0,
+    "blend_duration": 0.2
+  },
+  {
+    "primitive": "blend",
+    "roi_start": 0.7,
+    "roi_end":   1.0,
+    "bg_start":  0.7,
+    "bg_end":    1.0,
+    "blend_duration": 0.3
+  }
+]
+</pre>
+
+<h2>NOTES</h2>
+
+<h3>Multi-band / RGB Imagery</h3>
+
+<p>Supply comma-separated band raster names for <em>before</em> and <em>after</em>.
+The same animation plan is applied to all bands. Output frames are named
+<tt>&lt;output&gt;_b1_001</tt>, <tt>&lt;output&gt;_b2_001</tt>, etc. Use
+<em>i.group</em> to assemble output frames into imagery groups for display.</p>
+
+<h3>Color Transfer (<em>-c</em> flag)</h3>
+
+<p>When before and after images were acquired under different illumination
+conditions, the <em>-c</em> flag applies a simple mean/standard-deviation color
+transfer to match the before image statistics to the after image before
+computing the blend. This reduces distraction from color histogram differences.</p>
+
+<h3>Saving Animation Plans</h3>
+
+<p>Use <em>output_plan</em> to save the computed S and E matrices as named
+rasters. These can be re-used with <tt>primitive=plan</tt>, visualized
+in GRASS, or exported to GeoTIFF and used in external tools. The paper's
+original implementation stores S in band R and E in band G of a TIFF file;
+<em>r.anim.morph</em> stores them as separate GRASS rasters for consistency with
+GRASS data model conventions.</p>
+
+<h3>Creating Animations</h3>
+
+<p>Use <em>g.gui.animation</em> to play back the generated frame sequence as
+an animation within GRASS. Alternatively, export frames with
+<em>r.out.png</em> and compose them into an animated GIF or video with
+external tools such as <tt>ffmpeg</tt> or <tt>convert</tt> (ImageMagick).</p>
+
+<pre>
+# Export frames to PNG
+for frame in $(g.list type=rast pattern="anim_*" mapset=.); do
+    r.out.png input=$frame output=${frame}.png
+done
+
+# Assemble into animated GIF (ImageMagick)
+convert -delay 5 -loop 0 anim_*.png aral_sea.gif
+
+# Assemble into MP4 (ffmpeg)
+ffmpeg -framerate 15 -pattern_type glob -i 'anim_*.png' -c:v libx264 aral_sea.mp4
+</pre>
+
+<h2>EXAMPLES</h2>
+
+<h3>Simple monolithic blend (baseline)</h3>
+<pre>
+r.anim.morph before=lake_2000 after=lake_2010 \
+    output=anim primitive=blend frames=30
+</pre>
+
+<h3>Contracting lake (Aral Sea / shrinking lake scenario)</h3>
+<pre>
+# Create binary masks with r.mapcalc or r.threshold
+r.mapcalc "lake_mask_2000 = if(lake_extent_2000 > 0, 1, 0)"
+r.mapcalc "lake_mask_2010 = if(lake_extent_2010 > 0, 1, 0)"
+
+r.anim.morph before=lake_2000 after=lake_2010 \
+    output=lake_anim \
+    primitive=contraction \
+    mask_before=lake_mask_2000 \
+    mask_after=lake_mask_2010 \
+    roi_start=0.0 roi_end=0.8 \
+    bg_start=0.8  bg_end=1.0 \
+    blend_duration=0.2 \
+    frames=60 \
+    output_plan=lake_plan
+</pre>
+
+<h3>Flood expansion</h3>
+<pre>
+r.anim.morph before=area_pre_flood after=area_post_flood \
+    output=flood_anim \
+    primitive=expansion \
+    mask_before=water_mask_before \
+    mask_after=water_mask_after \
+    roi_start=0.0 roi_end=0.9 \
+    bg_start=0.9  bg_end=1.0 \
+    frames=45
+</pre>
+
+<h3>DEM-based snow accumulation</h3>
+<pre>
+r.anim.morph before=ndsi_summer after=ndsi_winter \
+    output=snow_anim \
+    primitive=dem \
+    dem=aster_dem \
+    blend_duration=0.1 \
+    frames=30
+</pre>
+
+<h3>DEM-based snow melt (low elevations first)</h3>
+<pre>
+r.anim.morph before=ndsi_winter after=ndsi_summer \
+    output=melt_anim \
+    primitive=dem \
+    dem=aster_dem \
+    blend_duration=0.1 \
+    frames=30 -i
+</pre>
+
+<h3>Northward directional progression</h3>
+<pre>
+r.anim.morph before=before_img after=after_img \
+    output=dir_anim \
+    primitive=directional \
+    direction=N \
+    frames=30
+</pre>
+
+<h3>Multi-band RGB Sentinel-2 animation</h3>
+<pre>
+# Sentinel-2 bands: B4=red, B3=green, B2=blue
+r.anim.morph \
+    before=S2_2020_B4,S2_2020_B3,S2_2020_B2 \
+    after=S2_2024_B4,S2_2024_B3,S2_2024_B2 \
+    output=s2_anim \
+    primitive=contraction \
+    mask_before=water_mask_2020 \
+    mask_after=water_mask_2024 \
+    frames=60 -c
+
+# Assemble into RGB imagery groups for display
+for f in $(seq -w 1 60); do
+    i.group group=frame_${f} \
+        input=s2_anim_b1_${f},s2_anim_b2_${f},s2_anim_b3_${f}
+done
+</pre>
+
+<h3>Multi-stage JSON animation</h3>
+<pre>
+r.anim.morph before=before after=after \
+    output=staged_anim \
+    stages=/path/to/animation_stages.json \
+    frames=60
+</pre>
+
+<h3>Visualize animation in GRASS</h3>
+<pre>
+g.gui.animation strds=my_animation_strds
+
+# Or using the frame list directly:
+g.list type=rast pattern="lake_anim_*" mapset=. output=/tmp/frames.txt
+g.gui.animation rast=$(cat /tmp/frames.txt | tr '\n' ',')
+</pre>
+
+<h2>REFERENCES</h2>
+
+<p>Lobo MJ, Appert C, Pietriga E (2019).
+<em>Animation Plans for Before-and-After Satellite Images.</em>
+IEEE Transactions on Visualization and Computer Graphics, 25(2):1347–1360.
+<a href="https://doi.org/10.1109/TVCG.2018.2796557">doi:10.1109/TVCG.2018.2796557</a></p>
+
+<p>Claramunt C, Thériault M (1995).
+Managing time in GIS an event-oriented approach.
+In: Recent Advances in Temporal Databases. Springer.</p>
+
+<h2>SEE ALSO</h2>
+
+<em>
+<a href="g.gui.animation.html">g.gui.animation</a>,
+<a href="i.group.html">i.group</a>,
+<a href="r.buffer.html">r.buffer</a>,
+<a href="r.grow.html">r.grow</a>,
+<a href="r.mapcalc.html">r.mapcalc</a>,
+<a href="r.out.png.html">r.out.png</a>,
+<a href="r.series.html">r.series</a>,
+<a href="r.anim.html">r.anim</a>,
+<a href="t.rast.series.html">t.rast.series</a>
+</em>
+
+<h2>AUTHOR</h2>
+
+Implemented for GRASS from the Baia framework (Lobo, Appert &amp; Pietriga 2018).
+
+<p><i>Last changed: 2024</i></p>
+</body>
+</html>
