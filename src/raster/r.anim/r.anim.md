@@ -24,9 +24,12 @@ scene at once.
 
 *[r.anim.morph](r.anim.morph.md)* morphs a *before* raster into an
 *after* raster using the Baia animation-plan framework
-([Lobo, Appert & Pietriga 2018](https://doi.org/10.1109/TVCG.2018.2796557)),
+([Lobo, Appert and Pietriga 2019](https://doi.org/10.1109/TVCG.2018.2796557)),
 with primitives for contraction, expansion, deformation, appearance,
 disappearance, directional, radial, and elevation-ordered transitions.
+The tutorial
+[Animating a year of water-level change at Falls Lake with r.anim.morph](https://learning.openplains.com/content/blog/animating_water_level_change_with_r_anim_morph.html)
+walks through a complete example on Sentinel-2 imagery.
 
 The following members are planned:
 
