@@ -193,5 +193,4 @@ Computer Graphics, 25(2), 1347-1360.
 
 ## AUTHORS
 
-Corey T. White, Center for Geospatial Analytics, North Carolina State
-University, and OpenPlains Inc.
+Corey T. White, [OpenPlains Inc.](https://openplains.com/)

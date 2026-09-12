@@ -57,6 +57,4 @@ g.extension extension=r.anim.morph
 
 ## AUTHORS
 
-Corey T. White, Center for Geospatial Analytics, North Carolina State
-University. Funded by [OpenPlains Inc.](https://openplains.com/) and the
-[Center for Geospatial Analytics](https://cnr.ncsu.edu/geospatial/).
+Corey T. White, [OpenPlains Inc.](https://openplains.com/)
