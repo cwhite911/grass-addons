@@ -28,7 +28,7 @@ scene at once.
 with primitives for contraction, expansion, deformation, appearance,
 disappearance, directional, radial, and elevation-ordered transitions.
 The tutorial
-[Animating a year of water-level change at Falls Lake with r.anim.morph](https://learning.openplains.com/content/blog/animating_water_level_change_with_r_anim_morph.html)
+[Animating the Falls Lake drawdown with r.anim.morph](https://learning.openplains.com/content/blog/animating_water_level_change_with_r_anim_morph.html)
 walks through a complete example on Sentinel-2 imagery.
 
 The following members are planned:

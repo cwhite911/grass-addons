@@ -99,7 +99,7 @@
 <p>Every frame receives the color table of its after raster so the animation does not flicker. Frames can be played with <em>g.gui.animation</em> or exported with <em>r.out.png</em> and turned into a video with an external tool. Frames of a multi-band animation can be combined with <em>r.composite</em> or displayed with <em>d.rgb</em>.</p>
 <p>With several bands, the number of output rasters is <strong>frames</strong> times the number of bands. Existing frames are only replaced with <strong>--overwrite</strong>.</p>
 <h2>EXAMPLES</h2>
-<p>All examples use the North Carolina sample dataset. A full walkthrough on real imagery, from a <em>t.stac</em> import of Sentinel-2 scenes to an MP4 of a receding reservoir, is in the tutorial <a href="https://learning.openplains.com/content/blog/animating_water_level_change_with_r_anim_morph.html">Animating a year of water-level change at Falls Lake with r.anim.morph</a>.</p>
+<p>All examples use the North Carolina sample dataset. A full walkthrough on real imagery, from a <em>t.stac</em> import of Sentinel-2 scenes to an MP4 of a receding reservoir, is in the tutorial <a href="https://learning.openplains.com/content/blog/animating_water_level_change_with_r_anim_morph.html">Animating the Falls Lake drawdown with r.anim.morph</a>.</p>
 <h3>Fade between two Landsat scenes</h3>
 <p>The 1987 scene is stored in the <em>landsat</em> mapset of the sample dataset.</p>
 <div class="code"><pre>g.region raster=lsat7_2002_30 -p

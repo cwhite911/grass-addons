@@ -122,7 +122,7 @@ number of bands. Existing frames are only replaced with **--overwrite**.
 All examples use the North Carolina sample dataset. A full walkthrough on
 real imagery, from a *t.stac* import of Sentinel-2 scenes to an MP4 of a
 receding reservoir, is in the tutorial
-[Animating a year of water-level change at Falls Lake with r.anim.morph](https://learning.openplains.com/content/blog/animating_water_level_change_with_r_anim_morph.html).
+[Animating the Falls Lake drawdown with r.anim.morph](https://learning.openplains.com/content/blog/animating_water_level_change_with_r_anim_morph.html).
 
 ### Fade between two Landsat scenes
 
