@@ -84,9 +84,6 @@ r.in.ssurgo ssurgo_path=wss_SSA.zip soils=soils \
 # Predict saturated hydraulic conductivity (mm/hr).
 r.soils.rosetta sand=sand silt=silt clay=clay bulk_density=bd \
   ksat=ksat_vg version=3 ksat_units=mm_per_hour
-
-# Partial derivatives of the surface for the flow solver.
-r.slope.aspect elevation=elevation dx=dx dy=dy
 ```
 
 ![ROSETTA saturated hydraulic conductivity](r_soils_rosetta.png)  
@@ -99,25 +96,27 @@ gray areas are map units without soil data.*
 *Figure: ROSETTA-estimated saturated water content theta_s (cm3/cm3) for the
 same area.*
 
-Ksat then enters *r.sim.water* in one of two ways. Both interpret Ksat as the
-steady-state infiltration rate; do not use both at once or infiltration is
-counted twice.
+Ksat reaches *r.sim.water* through either **rain** or **infil**. The two are not
+interchangeable: they act at different points in the simulation.
 
-Variant 1: supply Ksat as the infiltration loss on flowing water (**infil**):
-
-```sh
-r.sim.water elevation=elevation dx=dx dy=dy \
-  rain_value=50 infil=ksat_vg man_value=0.1 \
-  depth=depth discharge=discharge -t
-```
-
-Variant 2: fold Ksat into the rainfall excess (**rain**) and leave **infil**
-off. Rainfall excess is rainfall intensity minus infiltration, in mm/hr:
+**rain** takes a rainfall excess rate, rainfall intensity minus infiltration, in
+mm/hr. The subtraction is done before the run, so the removed water never enters
+the flow:
 
 ```sh
 r.mapcalc "rain_excess = max(0.0, 50.0 - ksat_vg)"
-r.sim.water elevation=elevation dx=dx dy=dy \
+r.sim.water elevation=elevation \
   rain=rain_excess man_value=0.1 \
+  depth=depth discharge=discharge -t
+```
+
+**infil** takes an infiltration rate applied to water that is already moving
+across a cell. This is what represents runoff generated upslope losing volume as
+it crosses a more permeable surface further down:
+
+```sh
+r.sim.water elevation=elevation \
+  rain_value=50 infil=ksat_vg man_value=0.1 \
   depth=depth discharge=discharge -t
 ```
 
@@ -135,9 +134,7 @@ r.sim.water elevation=elevation dx=dx dy=dy \
 
 *[r.in.ssurgo](r.in.ssurgo.md)* for importing SSURGO texture and Ksat,
 *[r.sim.water](https://grass.osgeo.org/grass-stable/manuals/r.sim.water.html)*
-for overland flow simulation,
-*[r.slope.aspect](https://grass.osgeo.org/grass-stable/manuals/r.slope.aspect.html)*
-for surface derivatives
+for overland flow simulation
 
 ## AUTHORS
 
